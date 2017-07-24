@@ -3,13 +3,12 @@
 #Use glymur to manipulate .jp2 files - common file format for high resolution satellite images. 
 #Read in one smaller image section from .jp2 image, find ORB keypoints. 
 #Then read in two slightly offset and do ORB matching. 
-#This program uses 'nemo' a 3-channel .jp2 file preloaded with Python/Anaconda for testing. 
+#This program uses 'nemo' a 3-channel .jp2 file preloaded with glymur for testing. 
 
 #Read in preloaded .jp2 file 'nemo' and slice to get crop and/or lower resolution version
 import cv2, glymur, numpy as np
 from matplotlib import pyplot as plt
 
-#make sure you've already put 'nemo' or .jp2 file of your choice in cwd
 jp2file=glymur.data.nemo()
 jp3=glymur.Jp2k(jp2file)
 
