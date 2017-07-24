@@ -1,0 +1,143 @@
+#Initial satellite image translation registration test
+
+#Test image registration pipeline:
+#Save screenshot of satellite image as png, make two overlapping croppings and save in cwd
+#Read in image files
+#ORB keypoints and descriptors
+#Matching, RANSAC, homography
+#Crop/transform to intersection
+#Display with toggle and blend between images
+
+import cv2
+import numpy as np
+from matplotlib import pyplot as plt
+import os
+print(os.getcwd()) #get cwd to put image files there
+
+#read in image files
+imgGrayCropI=cv2.imread('satTestGrayCropI.png',0)
+imgGrayCropII=cv2.imread('satTestGrayCropII.png',0)
+
+#display in new window, ESC to close window
+#cv2.imshow('imgI',imgGrayCropI)
+#k=cv2.waitKey(0)
+#cv2.destroyAllWindows()
+
+#ORB keypoints, descriptors
+orb=cv2.ORB_create()
+kpI=orb.detect(imgGrayCropI,None)
+kpI,desI = orb.compute(imgGrayCropI,kpI)
+kpII=orb.detect(imgGrayCropII,None)
+kpII,desII = orb.compute(imgGrayCropII,kpII)
+
+#display image with keypoints
+imgGrayCropIKey=cv2.drawKeypoints(imgGrayCropI,kpI,None,color=(0,255,0), flags=0)
+plt.imshow(imgGrayCropIKey),plt.show()
+
+#match with Brute Force
+# create BFMatcher object
+bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+# Match descriptors.
+matches = bf.match(desI,desII)
+# Sort them in the order of their distance.
+matches = sorted(matches, key = lambda x:x.distance)
+# Draw first 10 matches.
+img3 = cv2.drawMatches(imgGrayCropI,kpI,imgGrayCropII,kpII,matches[:10], None,flags=2)
+plt.imshow(img3),plt.show()
+
+#feature matching and homography
+#matches are already sorted from above by how good they are 
+
+#skipped checking there are at least 10 in next part because I've counted them here
+print(len(matches))
+matchesShort=matches[0:50]
+print(len(matchesShort))
+
+src_pts = np.float32([ kpI[m.queryIdx].pt for m in matchesShort ]).reshape(-1,1,2)
+dst_pts = np.float32([ kpII[m.trainIdx].pt for m in matchesShort ]).reshape(-1,1,2)
+
+M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC,5.0)
+matchesMask = mask.ravel().tolist()
+
+h,w = imgGrayCropI.shape
+pts = np.float32([ [0,0],[0,h-1],[w-1,h-1],[w-1,0] ]).reshape(-1,1,2)
+dst = cv2.perspectiveTransform(pts,M)
+print(dst)
+imgGrayCropIIwBox = cv2.polylines(imgGrayCropII,[np.int32(dst)],True,255,3, cv2.LINE_AA)
+
+draw_params = dict(matchColor = (0,255,0), # draw matches in green color
+                   singlePointColor = None,
+                   matchesMask = matchesMask, # draw only inliers
+                   flags = 2)
+
+img3 = cv2.drawMatches(imgGrayCropI,kpI,imgGrayCropIIwBox,kpII,matchesShort,None,**draw_params)
+
+plt.imshow(img3, 'gray'),plt.show()
+
+#crop/transform I and II to match "intersection"
+
+#use corners of our white transformation lines shown on II to show II cropped 
+#note this will be more complicated when the transformation isn't a simple translation
+
+h1,w1=imgGrayCropI.shape #872,1026
+h2,w2=imgGrayCropII.shape #872,1026
+
+#cut off imgGrayCropII at 845 and 1001 because that's where our perspective transformation 
+#corner points are (so adjust for other images based on size of image/where interection is)
+
+y1=0
+y2=845
+x1=0
+x2=1001
+roiII = imgGrayCropII[y1:y2, x1:x2]
+#plt.imshow(roiII,'gray'),plt.show()
+print(roiII.shape)
+
+#cut off equivalent amounts from imgGrayCropII
+y1=26
+y2=871
+x1=24
+x2=1025
+roiI = imgGrayCropI[y1:y2, x1:x2]
+#plt.imshow(roiI,'gray'),plt.show()
+print(roiI.shape)
+
+#So now roiI and roiII are the same size and should be registered.
+
+#Display translated images roiI and roiII registered
+#Make a display box with a switch that toggles between roiI and roiII
+#Add a blend trackbar so we can mix the two images
+
+img=roiI
+img2=roiI
+img3=roiII
+
+def nothing(x):
+    pass
+
+cv2.namedWindow('image')
+
+#create trackbar for blending
+cv2.createTrackbar('blend','image',0,100,nothing)
+
+#create switch to switch between two images
+switch = '0: img1 \n1 1: img2'
+cv2.createTrackbar(switch, 'image',0,1,nothing)
+
+while(1):
+    cv2.imshow('image',img)
+    k=cv2.waitKey(1) & 0xFF
+    if k == 27:
+        break
+
+    #blending two images
+    blend=cv2.getTrackbarPos('blend','image')
+    dst=cv2.addWeighted(img2,blend/100,img3,(100-blend)/100,0)
+    s=cv2.getTrackbarPos(switch,'image')
+    
+    if s==0:
+        img=img2
+    else:
+        img=dst 
+        #replace 'img=dst' with 'img=img3 here if you want to toggle between img2 and img3 instead of blending
+cv2.destroyAllWindows()
